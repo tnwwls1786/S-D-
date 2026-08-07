@@ -4,14 +4,16 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>경기남부 외부활동 지도 & 장애인 화장실 플래너</title>
-    <!-- 오픈소스 Leaflet 지도 라이브러리 (네이버 API 키 및 결제인증 불필요) -->
+    <!-- 오픈소스 Leaflet 지도 라이브러리 -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
         body { display: flex; height: 100vh; overflow: hidden; }
-        #sidebar { width: 430px; height: 100%; background: #f8f9fa; border-right: 1px solid #dee2e6; padding: 20px; display: flex; flex-direction: column; gap: 15px; overflow-y: auto; }
-        #map { flex: 1; height: 100%; }
+        
+        #sidebar { width: 430px; height: 100%; background: #f8f9fa; border-right: 1px solid #dee2e6; padding: 20px; display: flex; flex-direction: column; gap: 15px; overflow-y: auto; flex-shrink: 0; }
+        #map { flex: 1; height: 100%; min-height: 300px; }
+        
         h2 { font-size: 1.1rem; color: #333; border-bottom: 2px solid #007bff; padding-bottom: 8px; margin-top: 10px; }
         .form-group { display: flex; flex-direction: column; gap: 5px; margin-bottom: 10px; }
         label { font-size: 0.85rem; font-weight: bold; color: #555; }
@@ -56,6 +58,13 @@
         .info-card { width: 220px; font-size: 12px; line-height: 1.4; }
         .info-card img { width: 100%; height: 100px; object-fit: cover; border-radius: 4px; margin-bottom: 6px; }
         .info-title { font-size: 14px; font-weight: bold; margin-bottom: 4px; }
+
+        /* 📱 스마트폰/모바일 반응형 레이아웃 추가 */
+        @media (max-width: 768px) {
+            body { flex-direction: column-reverse; overflow: auto; }
+            #sidebar { width: 100%; height: auto; border-right: none; border-top: 1px solid #dee2e6; overflow-y: visible; }
+            #map { width: 100%; height: 50vh; }
+        }
     </style>
 </head>
 <body>
