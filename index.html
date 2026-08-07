@@ -4,9 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>경기남부 외부활동 지도 & 장애인 화장실 플래너</title>
-    <!-- 오픈소스 Leaflet 지도 라이브러리 -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- 카카오 지도 API (발급받은 JavaScript 키 적용) -->
+    <script type="text/javascript" src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=0da97579ff4bbe3b90fb610cf2b1dc52&libraries=services"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
         body { display: flex; height: 100vh; overflow: hidden; }
@@ -55,11 +54,10 @@
         .route-list li { margin-bottom: 5px; font-weight: bold; color: #333; }
         .route-result { background: white; padding: 8px; border-radius: 4px; font-size: 0.85rem; font-weight: bold; color: #007bff; text-align: center; }
         
-        .info-card { width: 220px; font-size: 12px; line-height: 1.4; }
+        .info-card { width: 220px; font-size: 12px; line-height: 1.4; padding: 5px; }
         .info-card img { width: 100%; height: 100px; object-fit: cover; border-radius: 4px; margin-bottom: 6px; }
         .info-title { font-size: 14px; font-weight: bold; margin-bottom: 4px; }
 
-        /* 📱 스마트폰/모바일 반응형 레이아웃 추가 */
         @media (max-width: 768px) {
             body { flex-direction: column-reverse; overflow: auto; }
             #sidebar { width: 100%; height: auto; border-right: none; border-top: 1px solid #dee2e6; overflow-y: visible; }
@@ -203,20 +201,23 @@
     let markers = [];
     let routePolyline = null;
     let selectedRoutePlaces = [];
+    let geocoder;
     let places = JSON.parse(localStorage.getItem('southGyeonggiPlacesV6') || '[]');
 
     function initMap() {
-        map = L.map('map').setView([37.2636, 127.0286], 11);
+        const container = document.getElementById('map');
+        const options = {
+            center: new kakao.maps.LatLng(37.2636, 127.0286),
+            level: 7
+        };
 
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 19,
-            attribution: '© OpenStreetMap'
-        }).addTo(map);
+        map = new kakao.maps.Map(container, options);
+        geocoder = new kakao.maps.services.Geocoder();
 
         populateFilter();
 
-        map.on('click', function(e) {
-            selectedLatLng = e.latlng;
+        kakao.maps.event.addListener(map, 'click', function(mouseEvent) {
+            selectedLatLng = mouseEvent.latLng;
             setTempMarker(selectedLatLng);
         });
 
@@ -227,42 +228,38 @@
         const address = document.getElementById('address').value;
         if (!address) return alert('장소 주소를 입력해 주세요!');
 
-        fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}`)
-            .then(res => res.json())
-            .then(data => {
-                if (!data || data.length === 0) {
-                    return alert('주소를 찾을 수 없습니다. 지도 위를 직접 클릭해 주세요.');
-                }
-                const result = data[0];
-                selectedLatLng = L.latLng(result.lat, result.lon);
-                map.setView(selectedLatLng, 15);
+        geocoder.addressSearch(address, function(result, status) {
+            if (status === kakao.maps.services.Status.OK) {
+                selectedLatLng = new kakao.maps.LatLng(result[0].y, result[0].x);
+                map.setCenter(selectedLatLng);
+                map.setLevel(3);
                 setTempMarker(selectedLatLng);
                 alert('장소 위치가 지정되었습니다.');
-            })
-            .catch(() => alert('주소 검색 중 오류가 발생했습니다.'));
+            } else {
+                alert('주소를 찾을 수 없습니다.');
+            }
+        });
     }
 
     function searchToiletAddress() {
         const tAddress = document.getElementById('toiletAddress').value;
         if (!tAddress) return alert('장애인 화장실 주소를 입력해 주세요!');
 
-        fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(tAddress)}`)
-            .then(res => res.json())
-            .then(data => {
-                if (!data || data.length === 0) {
-                    return alert('화장실 주소를 찾을 수 없습니다.');
-                }
-                const result = data[0];
-                document.getElementById('toiletLat').value = result.lat;
-                document.getElementById('toiletLng').value = result.lon;
+        geocoder.addressSearch(tAddress, function(result, status) {
+            if (status === kakao.maps.services.Status.OK) {
+                document.getElementById('toiletLat').value = result[0].y;
+                document.getElementById('toiletLng').value = result[0].x;
                 alert('장애인 화장실 위치가 정상적으로 연동되었습니다!');
-            })
-            .catch(() => alert('화장실 주소 검색 중 오류가 발생했습니다.'));
+            } else {
+                alert('화장실 주소를 찾을 수 없습니다.');
+            }
+        });
     }
 
     function setTempMarker(latLng) {
-        if (currentMarker) map.removeLayer(currentMarker);
-        currentMarker = L.marker(latLng).addTo(map);
+        if (currentMarker) currentMarker.setMap(null);
+        currentMarker = new kakao.maps.Marker({ position: latLng });
+        currentMarker.setMap(map);
     }
 
     function toggleFeeInput() {
@@ -306,8 +303,8 @@
             feeMemo,
             accessibility,
             memo,
-            lat: selectedLatLng.lat,
-            lng: selectedLatLng.lng,
+            lat: selectedLatLng.getLat(),
+            lng: selectedLatLng.getLng(),
             toilet: toiletAddress ? { address: toiletAddress, memo: toiletMemo, lat: Number(toiletLat), lng: Number(toiletLng) } : null
         };
 
@@ -321,7 +318,7 @@
         const listEl = document.getElementById('placeList');
         listEl.innerHTML = '';
         
-        markers.forEach(m => map.removeLayer(m));
+        markers.forEach(m => m.setMap(null));
         markers = [];
 
         const filterRegion = document.getElementById('filterRegion').value;
@@ -362,29 +359,45 @@
             `;
             listEl.appendChild(item);
 
-            const marker = L.marker([place.lat, place.lng]).addTo(map);
+            const position = new kakao.maps.LatLng(place.lat, place.lng);
+            const marker = new kakao.maps.Marker({ position: position, map: map });
+            markers.push(marker);
+
             const popupImg = place.imageUrl ? `<img src="${place.imageUrl}" onerror="this.style.display='none'">` : '';
-            marker.bindPopup(`
+            const infowindow = new kakao.maps.InfoWindow({
+                content: `
                 <div class="info-card">
                     ${popupImg}
                     <div class="info-title">${catIcon} ${place.name}</div>
                     <div>💰 ${feeText}</div>
                     <div>♿ ${place.accessibility.join(', ') || '편의시설 정보없음'}</div>
                     <div style="color:#666; font-size:11px; margin-top:3px;">📝 ${place.memo}</div>
-                </div>
-            `);
-            markers.push(marker);
+                </div>`,
+                removable: true
+            });
+
+            kakao.maps.event.addListener(marker, 'click', function() {
+                infowindow.open(map, marker);
+            });
 
             if (place.toilet && place.toilet.lat && place.toilet.lng) {
-                const toiletMarker = L.marker([place.toilet.lat, place.toilet.lng]).addTo(map);
-                toiletMarker.bindPopup(`
+                const toiletPos = new kakao.maps.LatLng(place.toilet.lat, place.toilet.lng);
+                const toiletMarker = new kakao.maps.Marker({ position: toiletPos, map: map });
+                markers.push(toiletMarker);
+
+                const toiletInfoWindow = new kakao.maps.InfoWindow({
+                    content: `
                     <div style="padding:5px; font-size:12px;">
                         <div style="font-weight:bold; color:#007bff;">♿ 장애인 화장실</div>
                         <div>관련: ${place.name}</div>
                         <div>${place.toilet.address}</div>
-                    </div>
-                `);
-                markers.push(toiletMarker);
+                    </div>`,
+                    removable: true
+                });
+
+                kakao.maps.event.addListener(toiletMarker, 'click', function() {
+                    toiletInfoWindow.open(map, toiletMarker);
+                });
             }
         });
     }
@@ -414,7 +427,7 @@
     function clearRoute() {
         selectedRoutePlaces = [];
         if (routePolyline) {
-            map.removeLayer(routePolyline);
+            routePolyline.setMap(null);
             routePolyline = null;
         }
         document.getElementById('routeResult').style.display = 'none';
@@ -426,24 +439,31 @@
             return alert('동선을 연결하려면 최소 2개 이상의 장소를 추가해 주세요!');
         }
 
-        if (routePolyline) map.removeLayer(routePolyline);
+        if (routePolyline) routePolyline.setMap(null);
 
-        const latLngs = selectedRoutePlaces.map(p => [p.lat, p.lng]);
-        routePolyline = L.polyline(latLngs, { color: '#007bff', weight: 5 }).addTo(map);
+        const linePath = selectedRoutePlaces.map(p => new kakao.maps.LatLng(p.lat, p.lng));
 
-        let totalDistanceMeter = 0;
-        for (let i = 0; i < latLngs.length - 1; i++) {
-            totalDistanceMeter += map.distance(latLngs[i], latLngs[i+1]);
-        }
+        routePolyline = new kakao.maps.Polyline({
+            path: linePath,
+            strokeWeight: 5,
+            strokeColor: '#007bff',
+            strokeOpacity: 0.8,
+            strokeStyle: 'solid'
+        });
 
-        const totalKm = (totalDistanceMeter / 1000).toFixed(1);
+        routePolyline.setMap(map);
+
+        const totalMeter = routePolyline.getLength();
+        const totalKm = (totalMeter / 1000).toFixed(1);
         const estimatedMinutes = Math.round((totalKm / 35) * 60);
 
         const resultEl = document.getElementById('routeResult');
         resultEl.style.display = 'block';
         resultEl.innerHTML = `🚘 총 이동 거리: <b>${totalKm} km</b><br>⏱️ 차량 예상 이동 시간: 약 <b>${estimatedMinutes}분</b>`;
 
-        map.fitBounds(routePolyline.getBounds());
+        const bounds = new kakao.maps.LatLngBounds();
+        linePath.forEach(pt => bounds.extend(pt));
+        map.setBounds(bounds);
     }
 
     function deletePlace(id, event) {
@@ -458,7 +478,9 @@
     }
 
     function moveToLocation(lat, lng) {
-        map.setView([lat, lng], 16);
+        const moveLatLon = new kakao.maps.LatLng(lat, lng);
+        map.setCenter(moveLatLon);
+        map.setLevel(3);
     }
 
     function saveData() {
@@ -484,7 +506,7 @@
         document.querySelectorAll('.accessibility').forEach(cb => cb.checked = false);
         
         if (currentMarker) {
-            map.removeLayer(currentMarker);
+            currentMarker.setMap(null);
             currentMarker = null;
         }
         selectedLatLng = null;
