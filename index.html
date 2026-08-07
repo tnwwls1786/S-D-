@@ -4,8 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>경기남부 외부활동 지도 & 장애인 화장실 플래너</title>
-    <!-- 네이버 지도 API + Geocoder 서브모듈 필수 포함 -->
-    <script type="text/javascript" src="https://oapi.map.naver.com/openapi/v3/maps.js?ncpClientId=g7f60nuwt5&submodules=geocoder"></script>
+    <!-- 오픈소스 Leaflet 지도 라이브러리 (네이버 API 키 및 결제인증 불필요) -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
         body { display: flex; height: 100vh; overflow: hidden; }
@@ -52,9 +53,8 @@
         .route-list li { margin-bottom: 5px; font-weight: bold; color: #333; }
         .route-result { background: white; padding: 8px; border-radius: 4px; font-size: 0.85rem; font-weight: bold; color: #007bff; text-align: center; }
         
-        .info-card { display: flex; gap: 10px; width: 280px; padding: 5px; font-size: 12px; line-height: 1.4; }
-        .info-card img { width: 90px; height: 90px; object-fit: cover; border-radius: 4px; flex-shrink: 0; }
-        .info-content { flex: 1; }
+        .info-card { width: 220px; font-size: 12px; line-height: 1.4; }
+        .info-card img { width: 100%; height: 100px; object-fit: cover; border-radius: 4px; margin-bottom: 6px; }
         .info-title { font-size: 14px; font-weight: bold; margin-bottom: 4px; }
     </style>
 </head>
@@ -197,15 +197,17 @@
     let places = JSON.parse(localStorage.getItem('southGyeonggiPlacesV6') || '[]');
 
     function initMap() {
-        map = new naver.maps.Map('map', {
-            center: new naver.maps.LatLng(37.2636, 127.0286), 
-            zoom: 11
-        });
+        map = L.map('map').setView([37.2636, 127.0286], 11);
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© OpenStreetMap'
+        }).addTo(map);
 
         populateFilter();
 
-        naver.maps.Event.addListener(map, 'click', function(e) {
-            selectedLatLng = e.coord;
+        map.on('click', function(e) {
+            selectedLatLng = e.latlng;
             setTempMarker(selectedLatLng);
         });
 
@@ -216,50 +218,42 @@
         const address = document.getElementById('address').value;
         if (!address) return alert('장소 주소를 입력해 주세요!');
 
-        naver.maps.Service.geocode({ query: address }, function(status, response) {
-            if (status !== naver.maps.Service.Status.OK) {
-                return alert('주소를 찾을 수 없습니다.');
-            }
-
-            const result = response.v2.addresses[0];
-            if (!result) return alert('검색 결과가 없습니다.');
-
-            selectedLatLng = new naver.maps.LatLng(result.y, result.x);
-            map.setCenter(selectedLatLng);
-            map.setZoom(15);
-            setTempMarker(selectedLatLng);
-            alert('장소 위치가 지정되었습니다.');
-        });
+        fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}`)
+            .then(res => res.json())
+            .then(data => {
+                if (!data || data.length === 0) {
+                    return alert('주소를 찾을 수 없습니다. 지도 위를 직접 클릭해 주세요.');
+                }
+                const result = data[0];
+                selectedLatLng = L.latLng(result.lat, result.lon);
+                map.setView(selectedLatLng, 15);
+                setTempMarker(selectedLatLng);
+                alert('장소 위치가 지정되었습니다.');
+            })
+            .catch(() => alert('주소 검색 중 오류가 발생했습니다.'));
     }
 
     function searchToiletAddress() {
         const tAddress = document.getElementById('toiletAddress').value;
         if (!tAddress) return alert('장애인 화장실 주소를 입력해 주세요!');
 
-        naver.maps.Service.geocode({ query: tAddress }, function(status, response) {
-            if (status !== naver.maps.Service.Status.OK) {
-                return alert('화장실 주소를 찾을 수 없습니다.');
-            }
-
-            const result = response.v2.addresses[0];
-            if (!result) return alert('검색 결과가 없습니다.');
-
-            document.getElementById('toiletLat').value = result.y;
-            document.getElementById('toiletLng').value = result.x;
-            alert('장애인 화장실 위치가 정상적으로 연동되었습니다!');
-        });
+        fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(tAddress)}`)
+            .then(res => res.json())
+            .then(data => {
+                if (!data || data.length === 0) {
+                    return alert('화장실 주소를 찾을 수 없습니다.');
+                }
+                const result = data[0];
+                document.getElementById('toiletLat').value = result.lat;
+                document.getElementById('toiletLng').value = result.lon;
+                alert('장애인 화장실 위치가 정상적으로 연동되었습니다!');
+            })
+            .catch(() => alert('화장실 주소 검색 중 오류가 발생했습니다.'));
     }
 
     function setTempMarker(latLng) {
-        if (currentMarker) currentMarker.setMap(null);
-        currentMarker = new naver.maps.Marker({
-            position: latLng,
-            map: map,
-            icon: {
-                content: '<div style="background:#333; width:14px; height:14px; border-radius:50%; border:2px solid white; box-shadow:0 0 5px rgba(0,0,0,0.5);"></div>',
-                anchor: new naver.maps.Point(7, 7)
-            }
-        });
+        if (currentMarker) map.removeLayer(currentMarker);
+        currentMarker = L.marker(latLng).addTo(map);
     }
 
     function toggleFeeInput() {
@@ -287,7 +281,7 @@
 
         const accessibility = Array.from(document.querySelectorAll('.accessibility:checked')).map(cb => cb.value);
 
-        if (!selectedLatLng) return alert('주소 검색을 완료하거나 지도 상 위치를 지정해 주세요!');
+        if (!selectedLatLng) return alert('주소 검색을 완료하거나 지도 위를 클릭해 위치를 찍어주세요!');
         if (!name) return alert('장소명을 입력해 주세요!');
         if (!region) return alert('시/군을 선택해 주세요!');
 
@@ -303,8 +297,8 @@
             feeMemo,
             accessibility,
             memo,
-            lat: selectedLatLng.lat(),
-            lng: selectedLatLng.lng(),
+            lat: selectedLatLng.lat,
+            lng: selectedLatLng.lng,
             toilet: toiletAddress ? { address: toiletAddress, memo: toiletMemo, lat: Number(toiletLat), lng: Number(toiletLng) } : null
         };
 
@@ -318,7 +312,7 @@
         const listEl = document.getElementById('placeList');
         listEl.innerHTML = '';
         
-        markers.forEach(m => m.setMap(null));
+        markers.forEach(m => map.removeLayer(m));
         markers = [];
 
         const filterRegion = document.getElementById('filterRegion').value;
@@ -359,61 +353,29 @@
             `;
             listEl.appendChild(item);
 
-            const markerBg = isExp ? '#dc3545' : '#fd7e14';
-            const marker = new naver.maps.Marker({
-                position: new naver.maps.LatLng(place.lat, place.lng),
-                map: map,
-                title: place.name,
-                icon: {
-                    content: `<div style="background:${markerBg}; width:18px; height:18px; border-radius:50%; border:2px solid white; box-shadow:0 0 5px rgba(0,0,0,0.4); display:flex; align-items:center; justify-content:center; color:white; font-size:10px; font-weight:bold;">${isExp ? '체' : '식'}</div>`,
-                    anchor: new naver.maps.Point(9, 9)
-                }
-            });
-            markers.push(marker);
-
+            const marker = L.marker([place.lat, place.lng]).addTo(map);
             const popupImg = place.imageUrl ? `<img src="${place.imageUrl}" onerror="this.style.display='none'">` : '';
-            const infoWindow = new naver.maps.InfoWindow({
-                content: `
+            marker.bindPopup(`
                 <div class="info-card">
                     ${popupImg}
-                    <div class="info-content">
-                        <div class="info-title" style="color:${markerBg};">${catIcon} ${place.name}</div>
-                        <div>💰 ${feeText}</div>
-                        <div>♿ ${place.accessibility.join(', ') || '편의시설 정보없음'}</div>
-                        <div style="color:#666; font-size:11px; margin-top:3px;">📝 ${place.memo}</div>
-                    </div>
-                </div>`
-            });
-
-            naver.maps.Event.addListener(marker, 'click', () => {
-                infoWindow.open(map, marker);
-            });
+                    <div class="info-title">${catIcon} ${place.name}</div>
+                    <div>💰 ${feeText}</div>
+                    <div>♿ ${place.accessibility.join(', ') || '편의시설 정보없음'}</div>
+                    <div style="color:#666; font-size:11px; margin-top:3px;">📝 ${place.memo}</div>
+                </div>
+            `);
+            markers.push(marker);
 
             if (place.toilet && place.toilet.lat && place.toilet.lng) {
-                const toiletMarker = new naver.maps.Marker({
-                    position: new naver.maps.LatLng(place.toilet.lat, place.toilet.lng),
-                    map: map,
-                    title: `${place.name} 인근 장애인 화장실`,
-                    icon: {
-                        content: `<div style="background:#007bff; width:20px; height:20px; border-radius:50%; border:2px solid white; box-shadow:0 0 5px rgba(0,0,0,0.4); display:flex; align-items:center; justify-content:center; color:white; font-size:11px; font-weight:bold;">♿</div>`,
-                        anchor: new naver.maps.Point(10, 10)
-                    }
-                });
+                const toiletMarker = L.marker([place.toilet.lat, place.toilet.lng]).addTo(map);
+                toiletMarker.bindPopup(`
+                    <div style="padding:5px; font-size:12px;">
+                        <div style="font-weight:bold; color:#007bff;">♿ 장애인 화장실</div>
+                        <div>관련: ${place.name}</div>
+                        <div>${place.toilet.address}</div>
+                    </div>
+                `);
                 markers.push(toiletMarker);
-
-                const toiletInfoWindow = new naver.maps.InfoWindow({
-                    content: `
-                    <div style="padding:10px; width:240px; font-size:12px; line-height:1.4;">
-                        <div style="font-size:14px; font-weight:bold; color:#007bff; margin-bottom:4px;">♿ 장애인 화장실</div>
-                        <div><b>관련 장소:</b> ${place.name}</div>
-                        <div><b>상세 주소:</b> ${place.toilet.address}</div>
-                        <div style="color:#666; font-size:11px; margin-top:4px;">📝 ${place.toilet.memo || '특이사항 없음'}</div>
-                    </div>`
-                });
-
-                naver.maps.Event.addListener(toiletMarker, 'click', () => {
-                    toiletInfoWindow.open(map, toiletMarker);
-                });
             }
         });
     }
@@ -443,7 +405,7 @@
     function clearRoute() {
         selectedRoutePlaces = [];
         if (routePolyline) {
-            routePolyline.setMap(null);
+            map.removeLayer(routePolyline);
             routePolyline = null;
         }
         document.getElementById('routeResult').style.display = 'none';
@@ -455,22 +417,14 @@
             return alert('동선을 연결하려면 최소 2개 이상의 장소를 추가해 주세요!');
         }
 
-        if (routePolyline) routePolyline.setMap(null);
+        if (routePolyline) map.removeLayer(routePolyline);
 
-        const path = selectedRoutePlaces.map(p => new naver.maps.LatLng(p.lat, p.lng));
-
-        routePolyline = new naver.maps.Polyline({
-            map: map,
-            path: path,
-            strokeColor: '#007bff',
-            strokeOpacity: 0.8,
-            strokeWeight: 5,
-            strokeStyle: 'solid'
-        });
+        const latLngs = selectedRoutePlaces.map(p => [p.lat, p.lng]);
+        routePolyline = L.polyline(latLngs, { color: '#007bff', weight: 5 }).addTo(map);
 
         let totalDistanceMeter = 0;
-        for (let i = 0; i < path.length - 1; i++) {
-            totalDistanceMeter += map.getProjection().getDistance(path[i], path[i+1]);
+        for (let i = 0; i < latLngs.length - 1; i++) {
+            totalDistanceMeter += map.distance(latLngs[i], latLngs[i+1]);
         }
 
         const totalKm = (totalDistanceMeter / 1000).toFixed(1);
@@ -480,9 +434,7 @@
         resultEl.style.display = 'block';
         resultEl.innerHTML = `🚘 총 이동 거리: <b>${totalKm} km</b><br>⏱️ 차량 예상 이동 시간: 약 <b>${estimatedMinutes}분</b>`;
 
-        const bounds = new naver.maps.LatLngBounds();
-        path.forEach(pt => bounds.extend(pt));
-        map.fitBounds(bounds);
+        map.fitBounds(routePolyline.getBounds());
     }
 
     function deletePlace(id, event) {
@@ -497,8 +449,7 @@
     }
 
     function moveToLocation(lat, lng) {
-        map.setCenter(new naver.maps.LatLng(lat, lng));
-        map.setZoom(16);
+        map.setView([lat, lng], 16);
     }
 
     function saveData() {
@@ -524,7 +475,7 @@
         document.querySelectorAll('.accessibility').forEach(cb => cb.checked = false);
         
         if (currentMarker) {
-            currentMarker.setMap(null);
+            map.removeLayer(currentMarker);
             currentMarker = null;
         }
         selectedLatLng = null;
